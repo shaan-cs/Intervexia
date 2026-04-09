@@ -1,4 +1,4 @@
-import type { Metadata } from "next"; // Error fix: Metadata import missing tha
+import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
 
@@ -10,42 +10,42 @@ const poppins = Poppins({
   display: 'swap',
 });
 
-// 🔥 SEO Metadata (Fixed & Optimized)
+// 🔥 SEO Metadata (Logic Preserved & Untouched)
 export const metadata: Metadata = {
   title: {
-    default: "Intervexi | AI Interview Preparation Platform",
-    template: "%s | Intervexi",
+    default: "Intervexia | AI Interview Preparation Platform",
+    template: "%s | Intervexia",
   },
   description:
-    "Intervexi is an AI-powered interview preparation platform that helps students practice mock interviews, improve skills, and get job-ready with real-time feedback.",
+    "Intervexia is an AI-powered interview preparation platform that helps students practice mock interviews, improve skills, and get job-ready with real-time feedback.",
 
   keywords: [
     "AI Interview Preparation",
     "Mock Interview Platform",
     "Technical Interview Practice",
     "Placement Preparation",
-    "Intervexi",
+    "Intervexia",
     "AI Mock Interviews",
     "Interview Feedback AI"
   ],
 
-  authors: [{ name: "Intervexi Team" }],
-  creator: "Intervexi",
-  publisher: "Intervexi",
+  authors: [{ name: "Intervexia Team" }],
+  creator: "Intervexia",
+  publisher: "Intervexia",
 
   metadataBase: new URL("https://intervexi.com"),
 
   openGraph: {
-    title: "Intervexi - AI Interview Preparation Platform",
-    description: "Practice AI-based mock interviews and prepare for placements with Intervexi.",
+    title: "Intervexia - AI Interview Preparation Platform",
+    description: "Practice AI-based mock interviews and prepare for placements with Intervexia.",
     url: "https://intervexi.com",
-    siteName: "Intervexi",
+    siteName: "Intervexia",
     images: [
       {
-        url: "/og-image.png", // Ensure this image exists in your public folder
+        url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Intervexi Platform Preview",
+        alt: "Intervexia Platform Preview",
       },
     ],
     locale: "en_US",
@@ -54,14 +54,15 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Intervexi - AI Interview Preparation",
+    title: "Intervexia - AI Interview Preparation",
     description: "Get job-ready with AI-powered mock interviews and real-time feedback.",
     images: ["/og-image.png"],
   },
 
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png", // Professional addition
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
@@ -71,8 +72,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${poppins.variable} h-full antialiased scroll-smooth`}>
-      <body className="min-h-full font-sans selection:bg-blue-100 selection:text-blue-900">
+    /* CRITICAL FIX: Inline style on HTML ensures the browser paints 
+       the background black BEFORE the JS even loads.
+    */
+    <html
+      lang="en"
+      className={`dark ${poppins.variable} h-full antialiased scroll-smooth`}
+      style={{ backgroundColor: '#020609', colorScheme: 'dark' }}
+    >
+      <body
+        className="min-h-full font-sans selection:bg-[#00D2DF]/20 selection:text-[#00D2DF]"
+        style={{ backgroundColor: '#020609' }}
+      >
         {children}
       </body>
     </html>

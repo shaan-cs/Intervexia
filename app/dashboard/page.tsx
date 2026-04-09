@@ -71,21 +71,20 @@ export default function Dashboard() {
   }
 
   const handleDeleteAccount = async () => {
-    const confirmDelete = confirm("🚨 AKHRI WARNING: Kya tum sach mein account delete karna chahte ho? Progress hamesha ke liye chali jayegi!")
-    if (confirmDelete) {
-      setLoading(true)
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          await supabase.from('profiles').delete().eq('id', user.id)
-          await supabase.auth.signOut()
-          router.push('/')
-        }
-      } catch (err: any) {
-        alert("Error: " + err.message)
-      } finally {
-        setLoading(false)
+    // Windows Confirm Removed as requested
+    setLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('profiles').delete().eq('id', user.id)
+        await supabase.auth.signOut()
+        router.push('/')
       }
+    } catch (err: any) {
+      // Windows Alert Removed - Error logged to console for technical review
+      console.error("Critical Deletion Error:", err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -163,19 +162,8 @@ export default function Dashboard() {
                     Protocol: <span className="text-cyan-500/80">{profile?.role}</span> Mastery
                   </p>
                 </div>
-
-                {/* <div className="bg-[#0a1116]/60 backdrop-blur-xl p-2 pr-6 rounded-2xl border border-white/5 flex items-center gap-4 font-black text-cyan-400 shadow-xl">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-500">
-                    <User size={20} />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-widest leading-none mb-1">Global Rank</span>
-                    #1,284
-                  </div>
-                </div> */}
               </header>
 
-              {/* These components should internally use dark mode styles */}
               <DashboardStats
                 profile={profile}
                 completedCount={completedModules.length}
@@ -190,13 +178,11 @@ export default function Dashboard() {
 
             <section id="learning-path" ref={learningPathRef} className="max-w-6xl mx-auto py-40 relative scroll-mt-20 overflow-visible">
 
-              {/* --- AMBIENT LUXURY GLOWS --- */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none -z-10">
                 <div className="absolute top-1/4 left-0 w-[500px] h-[500px] bg-cyan-500/[0.03] blur-[160px] rounded-full" />
                 <div className="absolute bottom-1/4 right-0 w-[500px] h-[500px] bg-blue-500/[0.03] blur-[160px] rounded-full" />
               </div>
 
-              {/* --- ADVANCED MINIMALIST HEADER --- */}
               <div className="text-center mb-40 relative px-4">
                 <motion.div
                   initial={{ opacity: 0, y: 30 }}
@@ -209,13 +195,6 @@ export default function Dashboard() {
                     AI-Driven Interview Architecture
                   </div>
 
-                  {/* Single Line Professional Heading - Font size reduced to 5xl max */}
-                  {/* <h3 className="text-xl md:text-3xl font-semibold text-white tracking-tight">
-                    Master Interviews with
-                    <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500">
-                      {" "}AI
-                    </span>
-                  </h3> */}
                   <h3 className="text-3xl md:text-5xl font-black text-white tracking-tighter   leading-none">
                     Master Interview with
                     <span className="relative ml-3 pr-3 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-teal-300 to-blue-500 drop-shadow-[0_0_20px_rgba(34,211,238,0.4)]">
@@ -223,22 +202,18 @@ export default function Dashboard() {
                     </span>
                   </h3>
 
-                  <p className="text-slate-500 text-lg md:text-xl font-bold  tracking-[0.15em] opacity-80 max-w-2xl mx-auto">
+                  <p className="text-slate-500 text-lg md:text-xl font-bold   tracking-[0.15em] opacity-80 max-w-2xl mx-auto">
                     Real-time Generation. <span className="text-white">Tier-1 Validation.</span> Global Certification.
                   </p>
                 </motion.div>
               </div>
 
-              {/* --- THE VINE TREE STRUCTURE --- */}
               <div className="relative flex flex-col items-center gap-48 pb-32">
 
-                {/* --- THE CENTRAL STEM (The Main Tana) --- */}
                 <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-[2px] -z-10">
-                  {/* Glow aura for the vine */}
                   <div className="absolute inset-0 bg-cyan-400/20 blur-[8px]" />
                   <div className="h-full bg-gradient-to-b from-cyan-500 via-cyan-400/10 to-transparent rounded-full" />
 
-                  {/* Animated Data-Pulses */}
                   <motion.div
                     animate={{ y: ['0%', '100%'], opacity: [0, 1, 0] }}
                     transition={{ repeat: Infinity, duration: 5, ease: "linear" }}
@@ -246,7 +221,6 @@ export default function Dashboard() {
                   />
                 </div>
 
-                {/* --- MODULE NODES (Responsive Vine Layout) --- */}
                 {modules.map((mod, index) => {
                   const isFinished = completedModules.includes(mod.id);
                   const isPreviousFinished = index === 0 || completedModules.includes(modules[index - 1]?.id);
@@ -257,7 +231,6 @@ export default function Dashboard() {
                     <div key={mod.id} className={`relative w-full flex items-center justify-center min-h-[120px] 
           ${isLeft ? 'md:flex-row' : 'md:flex-row-reverse'} flex-col gap-12 md:gap-0`}>
 
-                      {/* --- NODE SIDE --- */}
                       <div className={`flex-1 flex ${isLeft ? 'justify-end md:pr-24' : 'justify-start md:pl-24'} z-10 w-full`}>
                         <motion.div
                           initial={{ opacity: 0, scale: 0.8, x: isLeft ? -50 : 50 }}
@@ -267,7 +240,7 @@ export default function Dashboard() {
                         >
                           <RoadmapNode
                             id={mod.id}
-                            title="" // Title hum opposite side display kar rahe hain
+                            title="" 
                             index={index}
                             isBoss={index === 4}
                             status={nodeStatus}
@@ -275,13 +248,11 @@ export default function Dashboard() {
                         </motion.div>
                       </div>
 
-                      {/* --- CURVED TENDRILL (Connector) --- */}
                       <div className={`absolute top-1/2 -translate-y-1/2 h-[2px] w-24 hidden md:block -z-10
             ${isLeft ? 'right-1/2' : 'left-1/2'} 
             bg-gradient-to-r ${isLeft ? 'from-transparent to-cyan-500/40' : 'from-cyan-500/40 to-transparent'}`}
                       />
 
-                      {/* --- TEXT SIDE (Opposite to Node) --- */}
                       <div className={`flex-1 flex ${isLeft ? 'justify-start md:pl-24' : 'justify-end md:pr-24'} w-full text-center md:text-left`}>
                         <motion.div
                           initial={{ opacity: 0, x: isLeft ? 30 : -30 }}
@@ -304,7 +275,6 @@ export default function Dashboard() {
                 })}
               </div>
 
-              {/* --- SUMMIT DECORATION --- */}
               <div className="mt-20 relative flex flex-col items-center group">
                 <div className="absolute inset-0 bg-cyan-500/20 blur-[60px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
                 <motion.div
