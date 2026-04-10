@@ -70,7 +70,7 @@ export default function MainFooter() {
               <div className="flex items-center sm:justify-end gap-2">
                 <Globe size={12} className="text-emerald-400/80" />
                 <p className="text-[11px] font-semibold text-slate-400 font-mono tracking-wide">
-                  ASIA_INDIA_01
+                  ASIA_INDIA_03
                 </p>
               </div>
             </div>
