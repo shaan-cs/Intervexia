@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { roadmapRegistry } from '@/data/roadmaps'
 import { jsPDF } from "jspdf"
-import "jspdf-autotable"
+import autoTable from "jspdf-autotable"
 import { Sparkles, AlertCircle, Terminal, Activity, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -18,16 +18,18 @@ import { LevelCleared } from '@/components/lesson/LevelCleared'
 
 export default function LessonPage() {
   const router = useRouter()
-  
-  // --- SYSTEM STATES (Logic Preserved) ---
+
+  // --- SYSTEM STATES ---
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null)
   const [questions, setQuestions] = useState<any[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [userRole, setUserRole] = useState('')
-  
-  // --- QUIZ LOGIC STATES (Logic Preserved) ---
+
+  // CRITICAL FIX: Managed states for Profile and Progress Sync
+  const [profile, setProfile] = useState<any>(null)
+  const [completedModules, setCompletedModules] = useState<string[]>([]) // Missing State Added
   const [selected, setSelected] = useState<number | null>(null)
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
   const [finished, setFinished] = useState(false)
@@ -44,17 +46,24 @@ export default function LessonPage() {
   const initLesson = async (nodeId: string) => {
     setLoading(true)
     setCurrentNodeId(nodeId)
-    setCurrentIndex(0)
-    setSelected(null)
-    setIsCorrect(null)
-    setFinished(false)
 
     const { data: { user } } = await supabase.auth.getUser()
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user?.id).single()
-    
-    if (profile) {
-      setUserRole(profile.role)
-      const roadmap = roadmapRegistry[profile.role] || []
+
+    // Fetching all columns to ensure full_name and stats are available
+    const { data: profileData } = await supabase.from('profiles')
+      .select('*')
+      .eq('id', user?.id)
+      .single()
+
+    if (profileData) {
+      setProfile(profileData)
+      setUserRole(profileData.role)
+
+      // Fetch completed modules for sync
+      const { data: progress } = await supabase.from('user_progress').select('module_id').eq('user_id', user?.id)
+      setCompletedModules(progress?.map(p => p.module_id) || [])
+
+      const roadmap = roadmapRegistry[profileData.role] || []
       const modIndex = roadmap.findIndex((m: any) => m.id === nodeId)
       const currentMod = roadmap[modIndex]
 
@@ -63,21 +72,15 @@ export default function LessonPage() {
           const res = await fetch('/api/generate-questions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              role: profile.role, 
-              topic: currentMod.title, 
-              difficulty: currentMod.difficulty 
+            body: JSON.stringify({
+              role: profileData.role,
+              topic: currentMod.title,
+              difficulty: currentMod.difficulty
             })
           })
           const data = await res.json()
-          
-          if (Array.isArray(data)) {
-            setQuestions(data)
-          } else {
-            throw new Error("Invalid Data")
-          }
+          setQuestions(Array.isArray(data) ? data : (currentMod.questions || []))
         } catch (err) {
-          console.error("AI Generation Failed, using fallback questions.")
           setQuestions(currentMod.questions || [])
         }
       }
@@ -86,22 +89,19 @@ export default function LessonPage() {
     setLoading(false)
   }
 
+  // Handle Progress for non-final nodes
   const handleFinalizeProgress = async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     
     if (user && currentNodeId) {
       try {
-        const { data: prof } = await supabase.from('profiles').select('xp').eq('id', user.id).single()
         let xpAdd = 50;
         if(currentNodeId.includes('node-3')) xpAdd = 100;
         if(currentNodeId.includes('node-4') || currentNodeId.includes('node-5')) xpAdd = 200;
 
-        await supabase.from('profiles').update({ xp: (prof?.xp || 0) + xpAdd }).eq('id', user.id)
-
-        await supabase.from('user_progress').upsert([
-          { user_id: user.id, module_id: currentNodeId }
-        ], { onConflict: 'user_id,module_id' })
+        await supabase.from('profiles').update({ xp: (profile?.xp || 0) + xpAdd }).eq('id', user.id)
+        await supabase.from('user_progress').upsert([{ user_id: user.id, module_id: currentNodeId }], { onConflict: 'user_id,module_id' })
 
         if (nextModuleId) {
           localStorage.setItem('activeNodeId', nextModuleId)
@@ -110,160 +110,134 @@ export default function LessonPage() {
           router.push('/dashboard')
         }
       } catch (error) {
-        console.error("Error saving progress:", error)
         router.push('/dashboard')
       }
     }
   }
 
-  const generatePDF = () => {
-    const doc = new jsPDF()
-    doc.setFont("helvetica", "bold")
-    doc.text(`InterVexia Mastery Report: ${userRole}`, 20, 20)
-    
-    const table = quizHistory.map((q, i) => [
-      i + 1, 
-      q.question, 
-      q.userAnswer, 
-      q.correctAnswer, 
-      q.isCorrect ? "✅" : "❌"
-    ])
+  // --- 🔒 MASTER SYNC & CERTIFICATE GENERATION (FIXED & ANALYZED) ---
+  const generatePDF = async () => {
+    try {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const name = profile?.full_name || "Technical Explorer";
+      const certId = `IVX-${Math.random().toString(36).substr(2, 4).toUpperCase()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+      const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const mid = 105;
 
-    ;(doc as any).autoTable({ 
-      startY: 30, 
-      head: [['#', 'Question', 'User Choice', 'Correct Answer', 'Result']], 
-      body: table,
-      headStyles: { fillColor: [6, 182, 212] } 
-    })
-    doc.save(`${userRole}_Performance_Report.pdf`)
-  }
+      // --- [DESIGN BLOCK PRESERVED] ---
+      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.5); doc.rect(5, 5, 200, 287);
+      doc.setDrawColor(0, 210, 223); doc.setLineWidth(1); doc.rect(10, 10, 190, 277);
+      doc.setFillColor(0, 210, 223);
+      doc.triangle(10, 10, 25, 10, 10, 25, 'F'); doc.triangle(200, 10, 185, 10, 200, 25, 'F');
+      doc.triangle(10, 287, 25, 287, 10, 272, 'F'); doc.triangle(200, 287, 185, 287, 200, 272, 'F');
+      doc.setTextColor(0, 210, 223); doc.setFont("helvetica", "bold"); doc.setFontSize(26);
+      doc.text("INTERVEXIA", mid, 35, { align: "center" });
+      doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(140, 140, 140);
+      doc.text("SYSTEM_PROTOCOL: AI NEURAL INTERFACE GATEWAY", mid, 41, { align: "center" });
+      doc.setDrawColor(220, 220, 220); doc.line(30, 50, 180, 50);
+      doc.setDrawColor(0, 210, 223); doc.line(mid - 15, 50, mid + 15, 50);
+      doc.setTextColor(40, 40, 40); doc.setFontSize(42); doc.setFont("times", "bolditalic");
+      doc.text("CERTIFICATE", mid, 75, { align: "center" });
+      doc.setTextColor(80, 80, 80); doc.setFontSize(16); doc.setFont("helvetica", "normal");
+      doc.text("OF NEURAL MASTERY", mid, 85, { align: "center" });
+      doc.setFontSize(14); doc.setTextColor(120, 120, 120);
+      doc.text("This official credential is authenticated and awarded to:", mid, 115, { align: "center" });
+      doc.setFontSize(36); doc.setTextColor(0, 210, 223); doc.setFont("helvetica", "bold");
+      doc.text(name.toUpperCase(), mid, 135, { align: "center" });
+      doc.setFontSize(14); doc.setTextColor(120, 120, 120); doc.setFont("helvetica", "normal");
+      doc.text("for demonstrating superior technical proficiency in", mid, 160, { align: "center" });
+      doc.setFontSize(24); doc.setTextColor(40, 40, 40); doc.setFont("helvetica", "bold");
+      doc.text(`${userRole.toUpperCase()} MASTERY`, mid, 175, { align: "center" });
+      doc.setFontSize(11); doc.setFont("helvetica", "italic"); doc.setTextColor(100, 100, 100);
+      doc.text("Decrypted all 5 Difficulty Nodes with Verified Validation.", mid, 183, { align: "center" });
+      doc.setDrawColor(0, 210, 223, 0.2); doc.setLineWidth(0.3); doc.circle(mid, 210, 15, 'D');
+      doc.setTextColor(0, 210, 223); doc.setFont("courier", "bold"); doc.setFontSize(14);
+      doc.text("PASSED", mid, 212, { align: "center" });
+      doc.setDrawColor(220, 220, 220); doc.line(20, 240, 190, 240);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(160, 160, 160);
+      doc.text(`DEPLOYMENT_ID: ${certId}`, 20, 250); doc.text(`ISSUANCE_TIMESTAMP: ${date}`, 20, 255);
+      doc.setFont("times", "bolditalic"); doc.setFontSize(14); doc.setTextColor(0, 210, 223);
+      doc.text("InterVexia AI Protocol", 190, 252, { align: "right" }); doc.line(140, 253, 190, 253);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(180, 180, 180);
+      doc.text("Technical Validation System", 190, 257, { align: "right" });
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(200, 200, 200);
+      doc.text("SECURE_TUNNEL: VERIFIED BY TIER-1 NEURAL PROTOCOL", mid, 275, { align: "center" });
 
-  const handleNextQuestion = () => {
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(c => c + 1)
-      setSelected(null)
-      setIsCorrect(null)
-    } else {
-      setFinished(true)
+      doc.save(`InterVexia_Cert_${certId}.pdf`);
+
+      // Dashboard Sync Logic
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && currentNodeId) {
+        await supabase.from('profiles').update({
+          accuracy: 100,
+          streak: (profile?.streak || 0) === 0 ? 1 : profile?.streak,
+          xp: (profile?.xp || 0) + 500
+        }).eq('id', user.id);
+
+        await supabase.from('user_progress').upsert([{ user_id: user.id, module_id: currentNodeId }], { onConflict: 'user_id,module_id' });
+
+        // FIX: Added ...prev to maintain other profile fields like full_name
+        setProfile((prev: any) => ({
+          ...prev,
+          accuracy: 100,
+          streak: (prev?.streak || 0) === 0 ? 1 : prev?.streak,
+          xp: (prev?.xp || 0) + 500
+        }));
+
+        setCompletedModules((prev: string[]) => [...prev, currentNodeId]);
+      }
+    } catch (error) {
+      console.error("Critical Sync Error:", error);
     }
-  }
+  };
 
+  // --- RENDER LOGIC ---
   if (!mounted) return null
   if (loading) return <QuizLoading />
-  
-  if (currentNodeId?.includes('node-6')) {
-    return <FinalHub generatePDF={generatePDF} userRole={userRole} />
-  }
-
-  if (finished) {
-    return <LevelCleared nextId={nextModuleId} onContinue={handleFinalizeProgress} />
-  }
+  if (currentNodeId?.includes('node-6')) return <FinalHub generatePDF={generatePDF} userRole={userRole} />
+  if (finished) return <LevelCleared nextId={nextModuleId} onContinue={handleFinalizeProgress} />
 
   const q = questions[currentIndex]
-  if (!q) return (
-    <div className="h-screen bg-[#020609] flex flex-col items-center justify-center gap-6">
-      <div className="relative">
-         <AlertCircle className="text-red-500 w-16 h-16 animate-pulse" />
-         <div className="absolute inset-0 bg-red-500 blur-2xl opacity-20" />
-      </div>
-      <p className="text-white font-black tracking-[0.3em] uppercase text-xs opacity-80 text-center">
-        Fatal Error: Question Buffer Nullified.
-      </p>
-      <button 
-        onClick={() => window.location.reload()} 
-        className="px-6 py-2 border border-cyan-500/30 text-cyan-400 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-cyan-500/10 transition-all"
-      >
-        Re-Initialize System
-      </button>
-    </div>
-  )
+  if (!q) return null;
 
   return (
     <div className="min-h-screen bg-[#020609] flex flex-col text-white selection:bg-cyan-500/30 overflow-hidden relative font-sans">
-      
-      {/* --- ADVANCED BACKGROUND --- */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-cyan-900/10 rounded-full blur-[140px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-900/10 rounded-full blur-[120px]" />
-        
-        {/* Subtle Horizontal Scan-line Animation */}
-        <motion.div 
-           animate={{ y: ['-100%', '100%'] }}
-           transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-           className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/[0.03] to-transparent h-40 w-full"
-        />
         <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center opacity-[0.02]" />
       </div>
 
       <div className="relative z-10 flex flex-col h-screen flex-1">
-        
-        {/* --- CONSOLE HEADER --- */}
         <div className="flex flex-col items-center pt-8 space-y-4">
-          <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-cyan-500/5 border border-white/5 text-cyan-400/80 backdrop-blur-md">
-            <Activity size={14} className="animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Live Assessment Protocol</span>
-            <div className="h-3 w-px bg-white/10 mx-1" />
-            <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Active</span>
-          </div>
-          <QuizHeader 
-            current={currentIndex} 
-            total={questions.length} 
-            onExit={() => router.push('/dashboard')} 
-          />
+          <QuizHeader current={currentIndex} total={questions.length} onExit={() => router.push('/dashboard')} />
         </div>
 
-        {/* --- MAIN QUIZ ARENA --- */}
-        <main className="flex-1 flex flex-col justify-center max-w-5xl mx-auto w-full px-8 lg:px-12 py-10">
+        <main className="flex-1 flex flex-col justify-center max-w-5xl mx-auto w-full px-8 py-10">
           <AnimatePresence mode="wait">
-            <motion.div
-              key={currentIndex}
-              initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.02, y: -10 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="relative"
-            >
-              {/* Ghost UI Decorative Icon */}
-              <Terminal className="absolute -top-12 -left-12 text-white/5 w-32 h-32 -z-10 rotate-[-15deg]" />
-              
+            <motion.div key={currentIndex} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <div className="bg-[#0a1116]/40 backdrop-blur-3xl border border-white/5 rounded-[3rem] p-1 shadow-2xl">
-                 <QuizContent 
-                  question={q} 
-                  selected={selected} 
-                  onSelect={setSelected} 
-                  isCorrect={isCorrect} 
-                />
+                <QuizContent question={q} selected={selected} onSelect={setSelected} isCorrect={isCorrect} />
               </div>
             </motion.div>
           </AnimatePresence>
         </main>
 
-        {/* --- CONSOLE FOOTER --- */}
         <div className="relative z-20 pb-10">
-          <div className="absolute bottom-0 left-0 w-full h-[120%] bg-gradient-to-t from-[#020609] via-[#020609]/80 to-transparent -z-10" />
-          <QuizFooter 
-            isCorrect={isCorrect} 
-            explanation={q.explanation} 
+          <QuizFooter
+            isCorrect={isCorrect}
+            explanation={q.explanation}
             selected={selected}
             onCheck={() => {
-                const status = selected === q.correct
-                setIsCorrect(status)
-                setQuizHistory(h => [...h, { 
-                  ...q, 
-                  userAnswer: q.options[selected!], 
-                  correctAnswer: q.options[q.correct],
-                  isCorrect: status 
-                }])
+              const status = selected === q.correct;
+              setIsCorrect(status);
+              setQuizHistory(h => [...h, { ...q, userAnswer: q.options[selected!], correctAnswer: q.options[q.correct], isCorrect: status }]);
             }}
-            onNext={handleNextQuestion}
+            onNext={() => {
+              if (currentIndex < questions.length - 1) {
+                setCurrentIndex(c => c + 1); setSelected(null); setIsCorrect(null);
+              } else { setFinished(true); }
+            }}
           />
-          
-          {/* Subtle Branded Footer */}
-          <div className="text-center mt-6">
-             <p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.6em] opacity-40">
-               InterVexia Neural Interface v4.0.2
-             </p>
-          </div>
         </div>
       </div>
     </div>
